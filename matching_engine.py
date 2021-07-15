@@ -122,7 +122,44 @@ class MatchingEngine:
             # Remove asks used for filling order
             for ask in consumed_asks:
                 self.orderbook.remove(ask)
+
         elif order.side == 'sell' and order.price <= self.orderbook.best_bid():
             # Sell order crossed the spread
             filled = 0
             consumed_bids = []
+            for in range(len(self.orderbook.bids)):
+                bid = self.orderbook.bids[i]
+
+                if bid.price < order.price:
+                    break # Price of bid is too low, stop filling order
+                if filled == order.quantity:
+                    break # Order was filled
+
+                if filled + bid.quantity <= order.quantity: # order not yet filled, bid will be consumed whole
+                    filled += bid.quantity
+                    trade = Trade(bid.price, bid.quantity)
+                    self.trades.append(trade)
+                    consumed_bids.append(bid)
+                elif filled + bid.quantity > order.quantity: # order is filled, bid will be consumed partially
+                    volume = order.quantity-filled
+                    filled += volume
+                    trade = Trade(bid.price, volume)
+                    self.trades.append(trade)
+                    bid.quantity -= volume
+
+            # Place any remaining volume in LOB
+            if filled < order.quantity:
+                self.orderbook.add(Order("limit", "sell", order.price, order.quantity-filled))
+
+            # Remove bids used for filling order
+            for bid in consumed_bids:
+                self.orderbook.remove(bid)
+        else:
+            # Order did not cross the spread, place in order book
+            self.orderbook.add(order)
+
+    def run(self):
+        while True:
+            if len(self.queue) > 0:
+                order = self.queue.popleft()
+                self.match(order)
